@@ -22,6 +22,7 @@ import (
 type AppsTransport struct {
 	BaseURL string            // BaseURL is the scheme and host for GitHub API, defaults to https://api.github.com
 	Client  Client            // Client to use to refresh tokens, defaults to http.Client with provided transport
+	Logger  interface{}       // Logger used to print debugging information
 	tr      http.RoundTripper // tr is the underlying roundtripper being wrapped
 	key     *rsa.PrivateKey   // key is the GitHub App's private key
 	appID   int64             // appID is the GitHub App's ID
@@ -62,6 +63,20 @@ func NewAppsTransportFromPrivateKey(tr http.RoundTripper, appID int64, key *rsa.
 	}
 }
 
+func (t *AppsTransport) infow(msg string, keysAndValues ...interface{}) {
+	switch l := t.Logger.(type) {
+	case LeveledLogger:
+		l.Infow(msg, keysAndValues...)
+	}
+}
+
+func (t *AppsTransport) debugw(msg string, keysAndValues ...interface{}) {
+	switch l := t.Logger.(type) {
+	case LeveledLogger:
+		l.Debugw(msg, keysAndValues...)
+	}
+}
+
 // RoundTrip implements http.RoundTripper interface.
 func (t *AppsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// GitHub rejects expiry and issue timestamps that are not an integer,
@@ -74,6 +89,7 @@ func (t *AppsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		ExpiresAt: exp.Unix(),
 		Issuer:    strconv.FormatInt(t.appID, 10),
 	}
+	t.debugw("creating JWT", "claims", claims)
 	bearer := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 
 	ss, err := bearer.SignedString(t.key)
@@ -81,9 +97,17 @@ func (t *AppsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("could not sign jwt: %s", err)
 	}
 
+	bearerHeader := "Bearer " + ss
+	t.debugw("Setting headers", "Authorization", bearerHeader, "Accept", acceptHeader)
+
 	req.Header.Set("Authorization", "Bearer "+ss)
 	req.Header.Add("Accept", acceptHeader)
 
 	resp, err := t.tr.RoundTrip(req)
+	t.debugw("RoundTrip response",
+		"roundtrip", fmt.Sprintf("%T %#v", t.tr, t.tr),
+		"resp", fmt.Sprintf("%#v", resp),
+		"err", err,
+	)
 	return resp, err
 }
