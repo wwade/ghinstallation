@@ -89,7 +89,11 @@ func (t *AppsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		ExpiresAt: exp.Unix(),
 		Issuer:    strconv.FormatInt(t.appID, 10),
 	}
-	t.debugw("creating JWT", "claims", claims)
+	t.debugw("creating JWT",
+		"claims", claims,
+		"req.Method", req.Method,
+		"req.URL", req.URL.String(),
+	)
 	bearer := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 
 	ss, err := bearer.SignedString(t.key)
@@ -99,7 +103,12 @@ func (t *AppsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	bearerHeader := "Bearer " + ss
 
-	t.debugw("Setting headers", "Authorization", bearerHeader, "Accept", acceptHeader)
+	t.debugw("Setting headers",
+		"Authorization", bearerHeader,
+		"Accept", acceptHeader,
+		"req.Method", req.Method,
+		"req.URL", req.URL.String(),
+	)
 	req.Header.Set("Authorization", "Bearer "+ss)
 	req.Header.Add("Accept", acceptHeader)
 
