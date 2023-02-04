@@ -32,6 +32,7 @@ const (
 type Transport struct {
 	BaseURL                  string                           // BaseURL is the scheme and host for GitHub API, defaults to https://api.github.com
 	Client                   Client                           // Client to use to refresh tokens, defaults to http.Client with provided transport
+	Logger                   interface{}                      // Logger used to print debugging information
 	tr                       http.RoundTripper                // tr is the underlying roundtripper being wrapped
 	appID                    int64                            // appID is the GitHub App's ID
 	installationID           int64                            // installationID is the GitHub App Installation ID
@@ -102,11 +103,26 @@ func NewFromAppsTransport(atr *AppsTransport, installationID int64) *Transport {
 	return &Transport{
 		BaseURL:        atr.BaseURL,
 		Client:         &http.Client{Transport: atr.tr},
+		Logger:         atr.Logger,
 		tr:             atr.tr,
 		appID:          atr.appID,
 		installationID: installationID,
 		appsTransport:  atr,
 		mu:             &sync.Mutex{},
+	}
+}
+
+func (t *Transport) infow(msg string, keysAndValues ...interface{}) {
+	switch l := t.Logger.(type) {
+	case LeveledLogger:
+		l.Infow(msg, keysAndValues...)
+	}
+}
+
+func (t *Transport) debugw(msg string, keysAndValues ...interface{}) {
+	switch l := t.Logger.(type) {
+	case LeveledLogger:
+		l.Debugw(msg, keysAndValues...)
 	}
 }
 
@@ -127,13 +143,23 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	creq := cloneRequest(req) // per RoundTripper contract
-	creq.Header.Set("Authorization", "token "+token)
 
+	tokHdr := "token " + token
+	hdrKVs := []interface{}{"Authorization", tokHdr}
+	creq.Header.Set("Authorization", tokHdr)
 	if creq.Header.Get("Accept") == "" { // We only add an "Accept" header to avoid overwriting the expected behavior.
 		creq.Header.Add("Accept", acceptHeader)
+		hdrKVs = append(hdrKVs, "Accept", acceptHeader)
 	}
 	reqBodyClosed = true // req.Body is assumed to be closed by the tr RoundTripper.
 	resp, err := t.tr.RoundTrip(creq)
+	t.debugw("RoundTrip response",
+		append(
+			respKVs(resp),
+			"roundtrip", fmt.Sprintf("%T %#v", t.tr, t.tr),
+			"err", err,
+		)...,
+	)
 	return resp, err
 }
 

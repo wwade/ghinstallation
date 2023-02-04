@@ -98,16 +98,18 @@ func (t *AppsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	bearerHeader := "Bearer " + ss
-	t.debugw("Setting headers", "Authorization", bearerHeader, "Accept", acceptHeader)
 
+	t.debugw("Setting headers", "Authorization", bearerHeader, "Accept", acceptHeader)
 	req.Header.Set("Authorization", "Bearer "+ss)
 	req.Header.Add("Accept", acceptHeader)
 
 	resp, err := t.tr.RoundTrip(req)
 	t.debugw("RoundTrip response",
-		"roundtrip", fmt.Sprintf("%T %#v", t.tr, t.tr),
-		"resp", fmt.Sprintf("%#v", resp),
-		"err", err,
+		append(
+			respKVs(resp),
+			"roundtrip", fmt.Sprintf("%T %#v", t.tr, t.tr),
+			"err", err,
+		)...,
 	)
 	return resp, err
 }
